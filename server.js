@@ -1,43 +1,88 @@
-// server.js
-const net = require('net');
+const WebSocket = require('ws');
+const http = require('http');
+const { URL } = require('url');
 
-// ChatGum original server details
-const ORIGINAL_HOST = 'live2.chatgum.com';
-const ORIGINAL_PORT = 9933;
+const PROXY_PORT = 8080;
+const CHATGUM_SERVER = 'wss://live2.chatgum.com';  // Original server
 
-// Proxy listen port
-const LOCAL_PORT = 9933;
+// Rate limit bypass storage
+const roomCooldowns = new Map();
 
-// Simple TCP proxy server
-const server = net.createServer((clientSocket) => {
-  const remoteSocket = new net.Socket();
-
-  // Connect to original server
-  remoteSocket.connect(ORIGINAL_PORT, ORIGINAL_HOST, () => {
-    console.log('Connected to original ChatGum server');
-  });
-
-  // Data from client -> remote (handle delay here)
-  clientSocket.on('data', (data) => {
-    // Check if message data (replace below condition with exact message identifier)
-    // For now, delay all data by 2 seconds
-    setTimeout(() => {
-      remoteSocket.write(data);
-    }, 2000); // 2 second delay
-  });
-
-  // Data from remote -> client
-  remoteSocket.on('data', (data) => {
-    clientSocket.write(data);
-  });
-
-  // Handle close / errors
-  clientSocket.on('close', () => remoteSocket.end());
-  remoteSocket.on('close', () => clientSocket.end());
-  clientSocket.on('error', () => remoteSocket.end());
-  remoteSocket.on('error', () => clientSocket.end());
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('ChatGum Proxy Server Running!\n');
 });
 
-server.listen(LOCAL_PORT, () => {
-  console.log(`SmartFox proxy running on port ${LOCAL_PORT}`);
+const wss = new WebSocket.Server({ 
+    server, 
+    port: PROXY_PORT 
+});
+
+console.log(`🚀 ChatGum Proxy started on port ${PROXY_PORT}`);
+
+wss.on('connection', (ws, req) => {
+    console.log('📱 ChatGum client connected');
+    
+    // Original ChatGum server se connect
+    const chatgumWs = new WebSocket(CHATGUM_SERVER);
+    
+    // Client → Proxy → ChatGum
+    ws.on('message', (data) => {
+        try {
+            const message = JSON.parse(data);
+            console.log('📤 IN:', message);
+            
+            // RATE LIMIT BYPASS LOGIC
+            if (message.type === 'sendMessage' || 
+                message.action === 'message' || 
+                message.cmd === 'send') {
+                
+                const roomId = message.roomId || message.room || 'unknown';
+                const now = Date.now();
+                
+                // Fake timestamp - bypass 2sec check
+                message.timestamp = now;
+                message.sentAt = now;
+                message.delay = 0;
+                
+                // Clear cooldown
+                roomCooldowns.delete(roomId);
+                
+                console.log(`✅ ${roomId} - 2SEC BYPASS!`);
+            }
+            
+            // Forward to ChatGum server
+            chatgumWs.send(JSON.stringify(message));
+            
+        } catch (e) {
+            console.log('❌ Parse error:', e);
+            chatgumWs.send(data);  // Raw forward
+        }
+    });
+    
+    // ChatGum → Proxy → Client
+    chatgumWs.on('message', (data) => {
+        try {
+            const response = JSON.parse(data);
+            console.log('📥 OUT:', response);
+            ws.send(JSON.stringify(response));
+        } catch (e) {
+            ws.send(data);
+        }
+    });
+    
+    chatgumWs.on('close', () => {
+        console.log('🔌 ChatGum server disconnected');
+        ws.close();
+    });
+    
+    ws.on('close', () => {
+        console.log('📴 Client disconnected');
+        chatgumWs.close();
+    });
+});
+
+server.listen(PROXY_PORT, '0.0.0.0', () => {
+    console.log(`\n🌐 Proxy ready: ws://0.0.0.0:${PROXY_PORT}`);
+    console.log(`📱 Termux IP check: ifconfig`);
 });
