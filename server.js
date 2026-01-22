@@ -1,33 +1,43 @@
-/**
- * File: server.js
- * Purpose: TCP proxy server jo app requests ko SmartFox server tak forward kare
- * Repo: https://github.com/<YOUR_USERNAME>/smartfox-proxy
- */
+// server.js
+const net = require('net');
 
-const net = require("net");
-const cfg = require("./config");
+// ChatGum original server details
+const ORIGINAL_HOST = 'live2.chatgum.com';
+const ORIGINAL_PORT = 9933;
 
-// TCP proxy server
-net.createServer(client => {
+// Proxy listen port
+const LOCAL_PORT = 9933;
 
-    // Connect to SmartFox server
-    const sfs = net.connect(cfg.SMARTFOX_PORT, cfg.SMARTFOX_HOST);
+// Simple TCP proxy server
+const server = net.createServer((clientSocket) => {
+  const remoteSocket = new net.Socket();
 
-    // Client -> SmartFox
-    client.on("data", data => {
-        // 🔹 Future: Chat delay logic yahi daal sakte ho
-        sfs.write(data);
-    });
+  // Connect to original server
+  remoteSocket.connect(ORIGINAL_PORT, ORIGINAL_HOST, () => {
+    console.log('Connected to original ChatGum server');
+  });
 
-    // SmartFox -> Client
-    sfs.on("data", data => {
-        client.write(data);
-    });
+  // Data from client -> remote (handle delay here)
+  clientSocket.on('data', (data) => {
+    // Check if message data (replace below condition with exact message identifier)
+    // For now, delay all data by 2 seconds
+    setTimeout(() => {
+      remoteSocket.write(data);
+    }, 2000); // 2 second delay
+  });
 
-    // Error handling
-    client.on("error", err => console.log("Client error:", err));
-    sfs.on("error", err => console.log("SFS error:", err));
+  // Data from remote -> client
+  remoteSocket.on('data', (data) => {
+    clientSocket.write(data);
+  });
 
-}).listen(cfg.LISTEN_PORT, () => {
-    console.log("SmartFox proxy running on port", cfg.LISTEN_PORT);
+  // Handle close / errors
+  clientSocket.on('close', () => remoteSocket.end());
+  remoteSocket.on('close', () => clientSocket.end());
+  clientSocket.on('error', () => remoteSocket.end());
+  remoteSocket.on('error', () => clientSocket.end());
+});
+
+server.listen(LOCAL_PORT, () => {
+  console.log(`SmartFox proxy running on port ${LOCAL_PORT}`);
 });
