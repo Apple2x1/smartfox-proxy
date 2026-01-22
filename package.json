@@ -1,10 +1,12 @@
 {
-  "name": "smartfox-proxy",
+  "name": "chatgum-bypass-server",
   "version": "1.0.0",
-  "description": "Proxy server for SmartFox requests",
+  "description": "ChatGum 2 second delay bypass proxy",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "ws": "^8.14.2"
+  }
 }
